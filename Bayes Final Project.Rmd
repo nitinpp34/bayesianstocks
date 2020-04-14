@@ -9,3 +9,5 @@ knitr::opts_chunk$set(echo = TRUE)
 
 blah blah this is from Rstudio
 
+library(usethis) use_git_config(user.name="Maria Tackett", user.email="maria.tackett (at) duke.edu")
+
