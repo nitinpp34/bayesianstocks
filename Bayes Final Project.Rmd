@@ -1,13 +1,33 @@
 ---
 title: "Final Project"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-blah blah this is from Rstudio
+# Particle Filtering 
 
-library(usethis) use_git_config(user.name="Maria Tackett", user.email="maria.tackett (at) duke.edu")
+Particle filtering is a sequential Monte-Carlo (MC) method that seeks to predict a hidden state variable ($\textbf{x}$) from a series of observations ($\textbf{y}$). $p(\textbf{x}_0)$ is the initial state of the distribution, the transition equation is $p(\textbf{x}_t|\textbf{x}_{t-1})$, and $p(\textbf{y}_t|\textbf{x}_t)$ is the marginal distribution of the observation. Using Bayes' theorem, we derive an expression for $p(\textbf{x}_{0:t}|\textbf{y}_{1:t})$, the marginal distribution of the hidden state variable from the observations: 
 
+$$p(\textbf{x}_{0:t}|\textbf{y}_{1:t}) = \frac{p(\textbf{y}_{t}|\textbf{x}_{t})p(\textbf{x}_{t}|\textbf{y}_{1:t-1})}{\int{p(\textbf{y}_{t}|\textbf{x}_{t})p(\textbf{x}_{t}|\textbf{y}_{1:t-1})}d\textbf{x}_t}$$
+$$p(\textbf{x}_{0:t}|\textbf{y}_{1:t}) \propto p(\textbf{y}_{t}|\textbf{x}_{t})p(\textbf{x}_{t}|\textbf{y}_{1:t-1})$$
+We can also compute $p(\textbf{x}_{t}|\textbf{y}_{1:t})$ recursively via the marginal distribution:
+
+$$p(\textbf{x}_{t}|\textbf{y}_{1:t}) = \int {p(\textbf{x}_{t}|\textbf{x}_{t-1})p(\textbf{x}_{t-1}|\textbf{y}_{1:t-1})}d \textbf{x}_{t-1}$$
+To find the expected value of $E[f(x_t)]$:
+
+$$E[f(\textbf{x}_t)] = \int f(\textbf{x}_{0:t}) p(\textbf{x}_{0:t}|\textbf{y}_{1:t})d \textbf{x}_{0:t}$$
+Do we need intermediate steps here?
+
+$$E[f(\textbf{x}_t)] = \frac{\int f(\textbf{x}_{0:t}) p(\textbf{x}_{0:t}|\textbf{y}_{1:t})d \textbf{x}_{0:t}}{\int p(\textbf{x}_{0:t}|\textbf{y}_{1:t})d \textbf{x}_{0:t}}$$
+
+# Dataset
+
+
+# Bibliography
+
+$$x$$
