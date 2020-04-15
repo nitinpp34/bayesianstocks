@@ -9,12 +9,33 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# Objective 
+
+Our objective is to build an algorithm that can predict the movement of 1 month WTI Oil future contracts by using the spot price as a predictor. We will be using particle filters, a form of Sequential Monte Carlo, to build our models and predictions. 
+
+# Terminology 
+
+A future contract grants the holder the right to $X$ units of some commodity for $\$ Y$ in $Z$ months. If held until expiry, the commodity will be delivered physically. Future contracts give individuals the ability to hedge their commodity position by locking in a future price, or speculate on the directional movement of the commodity. 
+
+The spot price of the commodity refers to the price a commodity can be bought and delivered at in the present. 
+
+# Dataset
+
+We took out data from Investing.com. We used historical data for Spot prices and 1 month future contract prices April 15th, 2010 to April 15th, 2020 to create our data set. 
+
+Initially, we noticed that the data did not align perfectly, with there being missing days between our spot price data and future price data. We removed all data points that were not shared between the two data sets. 
+
+https://www.investing.com/commodities/crude-oil-historical-data
+https://www.investing.com/currencies/wti-usd-commentary
+
 # Particle Filtering 
 
 Particle filtering is a sequential Monte-Carlo (MC) method that seeks to predict a hidden state variable ($\textbf{x}$) from a series of observations ($\textbf{y}$). $p(\textbf{x}_0)$ is the initial state of the distribution, the transition equation is $p(\textbf{x}_t|\textbf{x}_{t-1})$, and $p(\textbf{y}_t|\textbf{x}_t)$ is the marginal distribution of the observation. Using Bayes' theorem, we derive an expression for $p(\textbf{x}_{0:t}|\textbf{y}_{1:t})$, the marginal distribution of the hidden state variable from the observations: 
 
 $$p(\textbf{x}_{0:t}|\textbf{y}_{1:t}) = \frac{p(\textbf{y}_{t}|\textbf{x}_{t})p(\textbf{x}_{t}|\textbf{y}_{1:t-1})}{\int{p(\textbf{y}_{t}|\textbf{x}_{t})p(\textbf{x}_{t}|\textbf{y}_{1:t-1})}d\textbf{x}_t}$$
+
 $$p(\textbf{x}_{0:t}|\textbf{y}_{1:t}) \propto p(\textbf{y}_{t}|\textbf{x}_{t})p(\textbf{x}_{t}|\textbf{y}_{1:t-1})$$
+
 We can also compute $p(\textbf{x}_{t}|\textbf{y}_{1:t})$ recursively via the marginal distribution:
 
 $$p(\textbf{x}_{t}|\textbf{y}_{1:t}) = \int {p(\textbf{x}_{t}|\textbf{x}_{t-1})p(\textbf{x}_{t-1}|\textbf{y}_{1:t-1})}d \textbf{x}_{t-1}$$
@@ -45,26 +66,23 @@ $$= p(y_{t}|x_{t})p(x_t|x_{0:t-1}, y_{1:t-1})p(x_{0:t-1}|y_{1:t-1})$$
 
 
 $$= p(y_{t}|x_{t})p(x_t|x_{t-1})p(x_{0:t-1}|y_{1:t-1})$$
+
 Recalling $w(x_{0:t}) = \frac{p(x_{0:t}|y_{1:t})}{\pi(x_{0:t}|y_{1:t})}$, we can plug in our value for $p(x_{0:t}|y_{1:t})$: 
 
 $$w_t^{*(i)} = \frac{p(y_{t}|x^{(i)}_{t})p(x_t^{(i)}|x^{(i)}_{t-1})p(x^{(i)}_{0:t-1}|y_{1:t-1})}{\pi(x^{(i)}_{0:t}|y_{1:t})}$$
+
 However, we want the weights to update recursively. Defining $\pi{(\cdot)}$ recursively will help us redefine $w_t^{*(i)}$:
 
 $$\pi(x_{0:t}|y_{1:t})=\pi(x_{t}|x_{0:t-1}, y_{1:t})\pi(x_{0:t-1}|y_{1:t-1})$$
-$$\linebreak$$
 
 $$w_t^{*(i)} = \frac{p(y_{t}|x^{(i)}_{t})p(x_t^{(i)}|x^{(i)}_{t-1})}{\pi(x_{t}|x_{0:t-1}, y_{1:t})}\,\frac{p(x^{(i)}_{0:t-1}|y_{1:t-1})}{\pi(x_{0:t-1}|y_{1:t-1})}$$
 
-$$\linebreak$$
 
 $$w_t^{*(i)} = \frac{p(y_{t}|x^{(i)}_{t})p(x_t^{(i)}|x^{(i)}_{t-1})}{\pi(x_{t}|x_{0:t-1}, y_{1:t})}\,w_{t-1}^{*(i)}$$
 
-
-
-# Dataset
-
-
-
-
 # Bibliography
+
+https://users.aalto.fi/~ssarkka/course_k2012/handout6.pdf
+
+
 
