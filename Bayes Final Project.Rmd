@@ -25,7 +25,17 @@ Do we need intermediate steps here?
 
 $$E[f(\textbf{x}_t)] = \frac{\int f(\textbf{x}_{0:t}) p(\textbf{x}_{0:t}|\textbf{y}_{1:t})d \textbf{x}_{0:t}}{\int p(\textbf{x}_{0:t}|\textbf{y}_{1:t})d \textbf{x}_{0:t}}$$
 
+To evalute this integral, we introduce $w(x_{0:t})$, the importance weight. The importance weight is equal to: 
+
+
+$$w(x_{0:t}) = \frac{p(x_{0:t}|y_{1:t})}{\pi(x_{0:t}|y_{1:t})}$$
+
+
+the importance sampling factor. The importance sampling factor relies on the probability 
+
 # Dataset
+
+
 
 
 # Bibliography
