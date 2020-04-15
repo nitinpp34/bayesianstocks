@@ -30,8 +30,36 @@ To evalute this integral, we introduce $w(x_{0:t})$, the importance weight. The 
 
 $$w(x_{0:t}) = \frac{p(x_{0:t}|y_{1:t})}{\pi(x_{0:t}|y_{1:t})}$$
 
+the importance sampling factor. The weight is very important in a particle filter algorithm as it allows us to pick which states are more likely than others and reduce down potential states before resampling. This weight, and subsequently, the importance sampling factor relies on (in our project with crude oil prices) the probability of a tomorrow's future price, given today's spot price divided by $\pi$, which is denoted by a factor that assesses different variables that influence the movement of tomorrow's future price. 
 
-the importance sampling factor. The weight is very important in a particle filter algorithm as it allows us to pick which states are more likely than others and reduce down potential states before resampling. This weight, and subsequently, the importance sampling factor relies on (in our project with crude oil prices) the probability of a tomorrow's future price, given today's spot price divided by 𝛑, which is denoted by a factor that assesses different variables that influence the movement of tomorrow's future price. 
+$$E[f(\textbf{x}_t)]= \frac{\int f(x_{0:t})w(x_{0:t})\pi(x_{0:t}|y_{1:t})dx_{0:t}}{\int w(x_{0:t})\pi(x_{0:t}|y_{1:t})dx_{0:t}}$$
+
+Because we are operating under a MC framework, we can create an approximation for this integral: 
+
+$$E[f(\textbf{x}_t)] \approx \frac{\sum^{i =N}_{i=1} f(x_{0:t}^{(i)})w(x^{(i)}_{0:t})}{\sum^{j =N}_{j=1} w(x^{(j)}_{0:t})}=\sum^{i =N}_{i=1} f(x_{0:t}^{(i)})w^{*(i)}_t$$
+wIs there a reason the indices differ between the sums? 
+
+$$p(x_{0:t}|y_{1:t}) \propto p(y_{t}|x_{0:t}, y_{1:t-1})p(x_{0:t}| y_{1:t-1})$$
+$$\linebreak$$
+$$= p(y_{t}|x_{t})p(x_t|x_{0:t-1}, y_{1:t-1})p(x_{0:t-1}|y_{1:t-1})$$
+
+
+$$= p(y_{t}|x_{t})p(x_t|x_{t-1})p(x_{0:t-1}|y_{1:t-1})$$
+Recalling $w(x_{0:t}) = \frac{p(x_{0:t}|y_{1:t})}{\pi(x_{0:t}|y_{1:t})}$, we can plug in our value for $p(x_{0:t}|y_{1:t})$: 
+
+$$w_t^{*(i)} = \frac{p(y_{t}|x^{(i)}_{t})p(x_t^{(i)}|x^{(i)}_{t-1})p(x^{(i)}_{0:t-1}|y_{1:t-1})}{\pi(x^{(i)}_{0:t}|y_{1:t})}$$
+However, we want the weights to update recursively. Defining $\pi{(\cdot)}$ recursively will help us redefine $w_t^{*(i)}$:
+
+$$\pi(x_{0:t}|y_{1:t})=\pi(x_{t}|x_{0:t-1}, y_{1:t})\pi(x_{0:t-1}|y_{1:t-1})$$
+$$\linebreak$$
+
+$$w_t^{*(i)} = \frac{p(y_{t}|x^{(i)}_{t})p(x_t^{(i)}|x^{(i)}_{t-1})}{\pi(x_{t}|x_{0:t-1}, y_{1:t})}\,\frac{p(x^{(i)}_{0:t-1}|y_{1:t-1})}{\pi(x_{0:t-1}|y_{1:t-1})}$$
+
+$$\linebreak$$
+
+$$w_t^{*(i)} = \frac{p(y_{t}|x^{(i)}_{t})p(x_t^{(i)}|x^{(i)}_{t-1})}{\pi(x_{t}|x_{0:t-1}, y_{1:t})}\,w_{t-1}^{*(i)}$$
+
+
 
 # Dataset
 
@@ -40,4 +68,3 @@ the importance sampling factor. The weight is very important in a particle filte
 
 # Bibliography
 
-$$x$$
