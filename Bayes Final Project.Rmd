@@ -15,7 +15,7 @@ Our objective is to build an algorithm that can predict the movement of 1 month 
 
 # Terminology 
 
-A future contract grants the holder the right to $X$ units of some commodity for $\$ Y$ in $Z$ months. If held until expiry, the commodity will be delivered physically. Future contracts give individuals the ability to hedge their commodity position by locking in a future price, or speculate on the directional movement of the commodity. 
+A future contract grants the holder the right to $X$ units of some commodity for $\$ Y$ in $Z$ months. If held until expiry, the commodity will be delivered physically. Future contracts give individuals the ability to hedge their commodity position by locking in a future price, or speculate on the directional movement of the commodity.
 
 The spot price of the commodity refers to the price a commodity can be bought and delivered at in the present. 
 
@@ -85,4 +85,10 @@ $$w_t^{*(i)} = \frac{p(y_{t}|x^{(i)}_{t})p(x_t^{(i)}|x^{(i)}_{t-1})}{\pi(x_{t}|x
 https://users.aalto.fi/~ssarkka/course_k2012/handout6.pdf
 
 
+```{r}
 
+library(readxl)
+Oil_Data <- read_excel("Oil_Data.xls")
+View(Oil_Data)
+
+```
