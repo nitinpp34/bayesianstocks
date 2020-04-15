@@ -31,7 +31,7 @@ To evalute this integral, we introduce $w(x_{0:t})$, the importance weight. The 
 $$w(x_{0:t}) = \frac{p(x_{0:t}|y_{1:t})}{\pi(x_{0:t}|y_{1:t})}$$
 
 
-the importance sampling factor. The importance sampling factor relies on the probability 
+the importance sampling factor. The weight is very important in a particle filter algorithm as it allows us to pick which states are more likely than others and reduce down potential states before resampling. This weight, and subsequently, the importance sampling factor relies on (in our project with crude oil prices) the probability of a tomorrow's future price, given today's spot price divided by 𝛑, which is denoted by a factor that assesses different variables that influence the movement of tomorrow's future price. 
 
 # Dataset
 
