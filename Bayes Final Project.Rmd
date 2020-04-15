@@ -86,9 +86,9 @@ https://users.aalto.fi/~ssarkka/course_k2012/handout6.pdf
 
 
 ```{r}
-
 library(readxl)
 Oil_Data <- read_excel("Oil_Data.xls")
 View(Oil_Data)
-
+oil <- na.omit(Oil_Data)
+View(oil)
 ```
