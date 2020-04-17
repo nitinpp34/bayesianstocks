@@ -7,6 +7,15 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(ggplot2)
+cb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442",
+                "#0072B2", "#D55E00", "#CC79A7", "grey80")
+ggplot2::theme_set(theme_bw())
+library(readxl)
+
+
 ```
 
 # Objective 
@@ -59,22 +68,15 @@ Because we are operating under a MC framework, we can create an approximation fo
 
 $$E[f(\textbf{x}_t)] \approx \frac{\sum^{i =N}_{i=1} f(x_{0:t}^{(i)})w(x^{(i)}_{0:t})}{\sum^{j =N}_{j=1} w(x^{(j)}_{0:t})}=\sum^{i =N}_{i=1} f(x_{0:t}^{(i)})w^{*(i)}_t$$
 wIs there a reason the indices differ between the sums? 
-
 $$p(x_{0:t}|y_{1:t}) \propto p(y_{t}|x_{0:t}, y_{1:t-1})p(x_{0:t}| y_{1:t-1})$$
 $$\linebreak$$
 $$= p(y_{t}|x_{t})p(x_t|x_{0:t-1}, y_{1:t-1})p(x_{0:t-1}|y_{1:t-1})$$
-
-
 $$= p(y_{t}|x_{t})p(x_t|x_{t-1})p(x_{0:t-1}|y_{1:t-1})$$
-
 Recalling $w(x_{0:t}) = \frac{p(x_{0:t}|y_{1:t})}{\pi(x_{0:t}|y_{1:t})}$, we can plug in our value for $p(x_{0:t}|y_{1:t})$: 
-
 $$w_t^{*(i)} = \frac{p(y_{t}|x^{(i)}_{t})p(x_t^{(i)}|x^{(i)}_{t-1})p(x^{(i)}_{0:t-1}|y_{1:t-1})}{\pi(x^{(i)}_{0:t}|y_{1:t})}$$
 
 However, we want the weights to update recursively. Defining $\pi{(\cdot)}$ recursively will help us redefine $w_t^{*(i)}$:
-
 $$\pi(x_{0:t}|y_{1:t})=\pi(x_{t}|x_{0:t-1}, y_{1:t})\pi(x_{0:t-1}|y_{1:t-1})$$
-
 $$w_t^{*(i)} = \frac{p(y_{t}|x^{(i)}_{t})p(x_t^{(i)}|x^{(i)}_{t-1})}{\pi(x_{t}|x_{0:t-1}, y_{1:t})}\,\frac{p(x^{(i)}_{0:t-1}|y_{1:t-1})}{\pi(x_{0:t-1}|y_{1:t-1})}$$
 
 
@@ -86,9 +88,82 @@ https://users.aalto.fi/~ssarkka/course_k2012/handout6.pdf
 
 
 ```{r}
+
 library(readxl)
-Oil_Data <- read_excel("Oil_Data.xls")
-View(Oil_Data)
+Oil_Data <- read_excel("oil_complete.xls")
 oil <- na.omit(Oil_Data)
-View(oil)
+
+# start with prior for x
+
+T <- 500
+x_true <- rep(NA, T)
+obs <- rep(NA, T)
+
+a <- oil$`Spot Vol`[1:T]
+b <- oil$`Future Vol`[1:T]
+
+sx <- sqrt(var(b))
+sy <- sqrt(var(a))
+
+for (t in seq(1, T)) {
+  x_true[t] <- b[t]
+  obs[t] <- a[t]
+}
+#
+T <- length(obs)
+N <- 1000
+
+# create x and weight matrices
+x <- matrix(nrow =  N, ncol = T)
+weights <- matrix(nrow =  N, ncol = T)
+# intial (at t=1):
+# draw X from prior distribution
+x[, 1] <- rnorm(N, 0, sx)
+# calculate weights, i.e. probability of evidence given sample from X
+weights[, 1] <- dnorm(obs[1], x[, 1], sy)
+# normalise weights
+weights[, 1] <- weights[, 1] / sum(weights[, 1])
+
+# weighted resampling with replacement. This ensures that X will converge to the true distribution
+x[, 1] <-
+  sample(x[, 1],
+         replace = TRUE,
+         size = N,
+         prob = weights[, 1])
+
+for (t in seq(2, T)) {
+  # predict x_{t} from previous time step x_{t-1}
+  # based on process (transition) model
+  x[, t] <- rnorm(N, x[, t - 1], sx)
+  # calculate  and normalise weights
+  weights[, t] <- dnorm(obs[t], x[, t], sy)
+  weights[, t] <- weights[, t] / sum(weights[, t])
+  # weighted resampling with replacement
+  x[, t] <-
+    sample(x[, t],
+           replace = TRUE,
+           size = N,
+           prob = weights[, t])
+}
+
+fut_pred <- oil$`Future Price`[1]
+
+x_mean <- apply(x, 2, mean)
+
+for (i in 1:ncol(x)) {
+  
+  new_pred <- fut_pred[length(fut_pred)] *(1+x_mean[i])
+  fut_pred <- c(fut_pred, new_pred)
+  
+}
+
+futures <- oil$`Future Price`[1:length(fut_pred)]
+spots <- oil$`Future Price`[1:length(fut_pred)]
+
+
+p1 <- ggplot() + geom_line(aes(y = fut_pred, x = seq(1:length(fut_pred)), colour = "red")) + geom_line(aes(y = futures, x = seq(1:length(fut_pred)), colour = "blue"))
+
+p1
+
+
 ```
