@@ -82,20 +82,19 @@ $$w_t^{*(i)} = \frac{p(y_{t}|x^{(i)}_{t})p(x_t^{(i)}|x^{(i)}_{t-1})}{\pi(x_{t}|x
 
 $$w_t^{*(i)} = \frac{p(y_{t}|x^{(i)}_{t})p(x_t^{(i)}|x^{(i)}_{t-1})}{\pi(x_{t}|x_{0:t-1}, y_{1:t})}\,w_{t-1}^{*(i)}$$
 
-# Bibliography
+# Naive Alogrithm 
 
-https://users.aalto.fi/~ssarkka/course_k2012/handout6.pdf
-
+We began our model by implementing a naive particle filter. Instead of predicting the price of the future contract, we predicted the volatility of the future contract. We did this because volatility is non-linear, for example, a 1 dollar price swing at 10 dollars is significantly larger than a 1 dollar price swing at 100 dollars. 
 
 ```{r}
+
+set.seed(000)
 
 library(readxl)
 Oil_Data <- read_excel("oil_complete.xls")
 oil <- na.omit(Oil_Data)
 
-# start with prior for x
-
-T <- 500
+T <- nrow(oil)-1 
 x_true <- rep(NA, T)
 obs <- rep(NA, T)
 
@@ -109,22 +108,28 @@ for (t in seq(1, T)) {
   x_true[t] <- b[t]
   obs[t] <- a[t]
 }
-#
+
+
 T <- length(obs)
 N <- 1000
 
-# create x and weight matrices
+```
+
+
+In the naive model, we assume a normal prior distribution. 
+
+
+```{r}
+
+
 x <- matrix(nrow =  N, ncol = T)
 weights <- matrix(nrow =  N, ncol = T)
-# intial (at t=1):
-# draw X from prior distribution
-x[, 1] <- rnorm(N, 0, sx)
-# calculate weights, i.e. probability of evidence given sample from X
-weights[, 1] <- dnorm(obs[1], x[, 1], sy)
-# normalise weights
-weights[, 1] <- weights[, 1] / sum(weights[, 1])
 
-# weighted resampling with replacement. This ensures that X will converge to the true distribution
+x[, 1] <- rnorm(N, 0, sx) #Assume a normal prior 
+
+weights[, 1] <- dnorm(obs[1], x[, 1], sy) # initial weight set
+weights[, 1] <- weights[, 1] / sum(weights[, 1]) # initial weight normalized
+
 x[, 1] <-
   sample(x[, 1],
          replace = TRUE,
@@ -132,25 +137,23 @@ x[, 1] <-
          prob = weights[, 1])
 
 for (t in seq(2, T)) {
-  # predict x_{t} from previous time step x_{t-1}
-  # based on process (transition) model
-  x[, t] <- rnorm(N, x[, t - 1], sx)
-  # calculate  and normalise weights
-  weights[, t] <- dnorm(obs[t], x[, t], sy)
-  weights[, t] <- weights[, t] / sum(weights[, t])
-  # weighted resampling with replacement
-  x[, t] <-
+  
+  x[, t] <- rnorm(N, x[, t - 1], sx) #sample x from previous x
+
+  weights[, t] <- dnorm(obs[t], x[, t], sy) #get weights from obsveration
+  weights[, t] <- weights[, t] / sum(weights[, t]) #normalize weights
+  
+  x[, t] <- #resample x using the weights
     sample(x[, t],
            replace = TRUE,
            size = N,
            prob = weights[, t])
-}
+} 
 
 fut_pred <- oil$`Future Price`[1]
+x_mean <- apply(x, 2, mean) #mean of predictions found
 
-x_mean <- apply(x, 2, mean)
-
-for (i in 1:ncol(x)) {
+for (i in 1:ncol(x)) { #volatility converted to prices
   
   new_pred <- fut_pred[length(fut_pred)] *(1+x_mean[i])
   fut_pred <- c(fut_pred, new_pred)
@@ -158,12 +161,49 @@ for (i in 1:ncol(x)) {
 }
 
 futures <- oil$`Future Price`[1:length(fut_pred)]
-spots <- oil$`Future Price`[1:length(fut_pred)]
+
+fut_naive <- NULL
+
+fut_naive <- cbind(fut_naive, Real = futures)
+fut_naive <- cbind(fut_naive, Predicted = fut_pred)
+
+```
+
+```{r}
+
+# Real prices vs. Predictions
+
+p1 <- ggplot() + geom_line(aes(y = futures, x = seq(1:length(fut_pred)), colour = "red")) + geom_line(aes(y = fut_pred, x = seq(1:length(fut_pred)), colour = "blue"))
+
+error <- abs(futures - fut_pred) / futures
+
+# Absolute error as percentage of price
+
+p2 <-
+  ggplot() + geom_line(aes(
+    y = error,
+    x = seq(1:length(fut_pred)),
+    colour = "red"
+  ))
 
 
-p1 <- ggplot() + geom_line(aes(y = fut_pred, x = seq(1:length(fut_pred)), colour = "red")) + geom_line(aes(y = futures, x = seq(1:length(fut_pred)), colour = "blue"))
-
-p1
+p1 + ggtitle("Predicted Prices vs. Real Prices")
+p2
 
 
 ```
+
+
+
+```{r}
+
+hist(x_mean)
+
+```
+
+
+# Bibliography
+
+https://users.aalto.fi/~ssarkka/course_k2012/handout6.pdf
+
+https://rpubs.com/awellis/180442 (naive code)
