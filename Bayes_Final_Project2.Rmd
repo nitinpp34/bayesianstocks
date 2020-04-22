@@ -195,13 +195,9 @@ p2
 
 Our naive model, as seen in the graph above, is mediocre at predicting oil futures prices, and the predictions seem to be getting worse as time passes. This makes sense, considering that there’s a big oil sell-off in the back end of our data. We think there are a couple reasons why this model might not be very successful: (1) our prior is normally drawn into the matrix X, and when looking at the distribution of the data, it does not seem to be normally distributed; and (2) the weights assigned to predict the future price is based off of volatility, which can boost the direction of prediction when looking at larger shifts in the market. To fix these, we will first draw our prior from a log-normal distribution and assign weightages in a different way. 
 
-```{r}
+# Trading Algorithm
 
-hist(x_mean)
-
-```
-
-#Profit Algo
+To test our particle filter algorithm, we built a simple trading agorithm to see how much money we would make in the markets. We start with some initial amount of cash. Each day, we make our prediction for the next day. If our predicted value if greater than the current price of the future contact, we buy a contract at today's price. The next day, we sell if the price matches our prediction. If there is an 8% drop, we decide to buy more.  
 
 ```{r}
 init = oil[1,2]
