@@ -200,14 +200,14 @@ Our naive model, as seen in the graph above, is mediocre at predicting oil futur
 To test our particle filter algorithm, we built a simple trading agorithm to see how much money we would make in the markets. We start with some initial amount of cash. Each day, we make our prediction for the next day. If our predicted value if greater than the current price of the future contact, we buy a contract at today's price. The next day, we sell if the price matches our prediction. If there is an 8% drop, we decide to buy more.  
 
 ```{r}
+prof_ret <- function(range) {
 init = oil[1,2]
-investment = init*1000
-current = init
 profit = 0
 sellpt = 0
+current = init
 hold = TRUE
 for (i in 1:nrow(oil)){
-  if (current < fut_pred[i+1] && hold){
+  if (current < fut_pred[i+1] && hold && abs(x_mean[i+1]) <= range){
     profit = profit + (oil[i+1,2] - current)
     sellpt = oil[i+1, 2]
     hold = FALSE
@@ -219,12 +219,53 @@ for (i in 1:nrow(oil)){
   }
 }
 tot = profit*1000 #minimum order of 1000 barrels to trade futures
+investment = init*1000
 roi = tot/investment
 roi
 tot
+
+return(roi)
+}
 ```
 
-Using a particle filter would yield $7590 over the past couple years of oil futures trading. With an initial investment of $85,510 on the first day of trading, our model yields an 8.88% return on investment.
+We want to sample through potential ranges to stop trading. This ensures that the model primarily focuses on trading when volatility is small and makes safer trades. 
+
+```{r}
+top = 0
+range = 0
+for (i in seq(from = 0.02, to = 0.20, by = 0.005)){
+    if (prof_ret(i) > top){
+      top = prof_ret(i)
+      range = i
+    }
+  }
+range
+```
+
+```{r}
+init = oil[1,2]
+profit = 0
+sellpt = 0
+current = init
+hold = TRUE
+for (i in 1:nrow(oil)){
+  if (current < fut_pred[i+1] && hold && abs(x_mean[i+1]) <= 0.035){
+    profit = profit + (oil[i+1,2] - current)
+    sellpt = oil[i+1, 2]
+    hold = FALSE
+  }
+  #after repeated trials, 8% drop seems to be the best point to rebuy
+  if (!hold && oil[i, 2] <= 0.92*sellpt){ 
+    current = oil[i, 2]
+    hold = TRUE
+  }
+}
+tot = profit*1000 #minimum order of 1000 barrels to trade futures
+tot
+```
+
+
+Using a particle filter would yield $9850 over the past 5 years of oil futures trading. With an initial investment of $85,510 on the first day of trading, our model yields an 11.52% return on investment.
 
 # Bibliography
 
