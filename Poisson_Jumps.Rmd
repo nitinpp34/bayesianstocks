@@ -1,37 +1,64 @@
-
+---
+output:
+  html_document: default
+  pdf_document: default
+---
 ```{r}
 
 library("ggplot2")
 library("dplyr")
 library("readxl")
-#library("pracma")
-#library("somebm")
 
-oil_data <- read_xls("oil_complete.xls") #2589 rows
+library("fractaldim")
+library("somebm")
+library("stats")
 
 ```
 
+```{r}
 
-To improve our model, we looked into implementing Poisson jump shifts. The algorithm for simulating Poisson jumps is simple. First, to determine how many jumps there will be, $N_T$ is found:
+oil_data <- read_xls("oil_complete.xls") #2589 rows
+names(oil_data)[2] <- "fut_price"
+names(oil_data)[3] <- "spot_price"
+names(oil_data)[4] <- "fut_vol"
+names(oil_data)[5] <- "spot_vol"
 
-$$N_T \sim Po(T\lambda)$$
-
-Then, simulate $N_T$ uniforms to determine the time between jumps: If there are $N_T$ jumps in $T$ days, there will be $T/N_T = Z$ samples taken: 
-
-$$X_{1...Z} \sim U(0,a)$$
-
-Where $a$ is some arbitrary value. However, the total of the lengths between the jumps must be equal to $T$. Therefore, we normalize the data to sum to $T$. 
-
-$$X_i = \frac{X_i*T}{\sum_{i=1}^Z X_i}$$
-
-To actually compute this, whole integers are needed. Because rounding may make $\sum_{i=0}^{N_t} Y_i \neq T$, a buffer is added to the last value equal to $B = T-\sum_{i=0}^{N_t} Y_i$ to ensure the equivalence holds. We then sampled all the values to randomize the order, so the buffer wasn't always at the end. Finally we simulate the noise: 
-
-$$Y_{1...T} \sim N(\mu,\sigma^2)$$
-
+```
 
 ```{r}
 
-po_return <- function(T, la, mu, init, j_mu, j_var, i_mu, i_var) {
+genNoise <- function(data, size) {
+  
+  i <- 1
+  hurst <- NULL
+  
+  while (i < length(data) - size - 1) {
+    j <- i + size
+    hurst <- c(hurst, 2 - fd.estim.hallwood(data[i:j])$fd)
+    i <- i + 1
+    
+  }
+  
+  noise <- NULL
+  
+  for (i in 1:length(hurst)) {
+    if (hurst[i] < 0)
+      noise <-
+        c(noise, fbm(0, 1)[1])
+    else
+      noise <- c(noise, fbm(hurst[i], 1)[1])
+    
+  }
+  
+  return (noise)
+  
+}
+
+```
+
+```{r}
+
+genJumps <- function(T, la, j_mu, j_var) {
   
   jump_count <- rpois(1, T * la) # in T units, how many jumps will there be
   
@@ -51,20 +78,13 @@ po_return <- function(T, la, mu, init, j_mu, j_var, i_mu, i_var) {
   pjumps <- c()
   
   for (i in 1:length(jump_times)) {
+    
     final_data <- c(final_data, rep(jump_vals[i], jump_times[i]))
     pjumps <- c(pjumps, rep(jump_vals[i], jump_times[i]))
     
   }
   
-  for (j in 1:length(final_data)) {
-    final_data[i] <- mu * i * final_data[i]
-    
-  }
-  
-  dis = cumsum(rnorm(length(final_data), i_mu, i_var))
-  x1 = seq(1:length(dis))
-  
-  final_data <- final_data + dis + init
+  final_data <- final_data 
   
   return (final_data)
   
@@ -72,29 +92,127 @@ po_return <- function(T, la, mu, init, j_mu, j_var, i_mu, i_var) {
 
 ```
 
+To improve our model, we looked into implementing Poisson jump shifts. The algorithm for simulating Poisson jumps is simple. First, to determine how many jumps there will be, $N_T$ is found:
+
+$$N_T \sim Po(T\lambda)$$
+
+Then, simulate $N_T$ uniforms to determine the time between jumps: 
+
+$$p_{1...N_T} \sim U(0,a)$$
+
+Where $a$ is some arbitrary value. However, the total of the lengths between the jumps must be equal to $T$. Therefore, we normalize the data to sum to $T$. 
+
+$$U_i = \frac{Tp_i}{\sum_{i=1}^{N_T} p_i}$$
+
+This ensures the following sum holds:
+
+$$\sum_{i=1}^{N_T}U_i = T$$
+
+Addionallity, the total time elapsed before the next jump is:
+
+$$F(U_i)=\sum_{j=1}^{i}U_j$$
+
+To actually compute this, whole integers are needed. Because rounding may make $\sum_{i=0}^{N_t} P_i \neq T$, a buffer is added to the last value equal to $B = T-\sum_{i=0}^{N_t} Y_i$ to ensure the equivalence holds. We then sampled all the values to randomize the order, so the buffer wasn't always at the end. Finally we simulate the size of the jumps: 
+
+$$Y_{1...T} \sim N(\mu,\sigma^2)$$
+
+This is what a example of a sample may look like for $T = 1000, \, \lambda = 0.05$ 
+
+
 ```{r}
 
-names(oil_data)[2] <- "fut_price"
-names(oil_data)[3] <- "spot_price"
-names(oil_data)[4] <- "fut_vol"
-names(oil_data)[5] <- "spot_vol"
+example <- genJumps(1000, 0.05, 0, 1)
+ggplot() + geom_line(aes(x = seq(1:1000), y = example)) + ggtitle("Simulated Poisson Jump Process with T = 1000, λ = 0.05") + labs(y="Jump Size", x = "Index")
+
+```
+
+Because the price of oil is subject to random political events that may quickly change the price, adding a poisson jump process to our simulation will help us to form confidence intervals of how we expect the price to perform over a period of time. After we implement the jumps, we must account for the intraday noise, or Brownian motion. For simple Brownian Motion, $X_i \sim N(0,1)$, with
+
+$$S_n = \sum_{i=1}^nX_i$$
+
+$$E(S_n)=\sqrt{n}$$
+
+Therefore, the interpretation is that over $n$ samples, the expected distance from the origin is $\sqrt{n}$. However, for oil, we believed this was an oversimplification of the price behavior. Oil is very connected to macroeconomic forces, creating cyclicality in supply and demand. A company like Apple may be expected to grow on average for 40 years, but this assumption does not hold for oil, thus we believe the Brownian Motion used to simulate our volatility should reflect that. In our research, we came across Hurst Exponents. For some sum $S_n$ of arbitrary random variables $Y_i$
+
+$$S_n = \sum_{i = 1}^{n}X_i$$
+
+$$E(S_n) = n^{H}$$
+
+The Hurst Exponent describes the degree of dispersion a time series exercises, with the domain of $H: [0,1]$. $H = 0.5$ would be standard Brownian Motion. $H = 1$ would dsuggest the series will move far from the origin, meaning the series is trend following. $H = 0$ would suggest the series is mean reverting or returns to the starting point over time. 
+
+```{r}
+
+set.seed(10)
+
+df <- NULL
+
+n <- 2000
+
+h1 <- fbm(0.1, n)
+h2 <- fbm(0.25, n)
+h3 <- fbm(0.5, n)
+h4 <- fbm(0.75, n)
+h5 <- fbm(0.99, n)
+
+ts.plot(main = "Fractional Brownian Motion w/various H Values",ts(h1, start = c(0,1)),
+        ts(h2, start = c(0,1)), 
+        ts(h3, start = c(0,1)),
+        ts(h4, start = c(0,1)),
+        ts(h5, start = c(0,1)),
+    col = c('#845EC2', '#D65DB1', '#FF6F91', '#FF9671', '#FFC75F'), 
+    xlab = "Index", 
+    ylab = "Y", 
+    lwd = 1.5)
+
+legend("topleft", bty="n", lty=c(1,1), col=c('#845EC2', '#D65DB1', '#FF6F91', '#FF9671', '#FFC75F'),
+       legend=c("H = 0.1", "H = 0.25", "H = 0.5", "H = 0.75 ", "H = 0.99"))
+
+```
+
+The Hurst exponent is found empirically by looking at how self-similar the data is. First, we found the Hurst Exponent of the last 100 trading days, using the library fractaldim. Then, we generated a sample of random data with a Hurst exponent equal to the one found empirically. To do this, we used the somebm library. In conclusion, our simulated price at time $T$ is equal to the sum of all previous noise plus all previous poisson jumps plus the initial starting value: 
+
+$$X_T = X_1 + \sum_{t=1}^{T-1}B_t + \sum_{t=1}^{T-1}\bigg[\sum_{i=0}^{N_T}Y_i\,\textbf {1}_{F(U_i) \leq t}\bigg]$$
+
+
+```{r}
 
 la_real <- 0.03592
 T <- nrow(oil_data)
 init <- 85.5
 
 fut_jumps <- filter(oil_data, abs(fut_vol) > 0.05)
-iday <- filter(oil_data, abs(fut_vol) < 0.05)
-
 fj_vol <- abs(fut_jumps$fut_vol)
 j_mu <- mean(fj_vol)
 j_var <- var(fj_vol)
 
-i_mu <- mean(iday$fut_price[2:nrow(iday)]-iday$fut_price[1:(nrow(iday)-1)])
-i_var <- var(iday$fut_price[2:nrow(iday)]-iday$fut_price[1:(nrow(iday)-1)])
+jumps <- exp(genJumps(T, la_real, j_mu, j_var))
+noise <- cumsum(genNoise(oil_data$fut_price, 100))
 
-sims <- po_return(T, la_real, 0, init, j_mu, j_var, i_mu, i_var)
+b <- length(jumps)-length(noise)+1
+jumps <- jumps[b:length(jumps)]
 
-plot(sims, type = "l")
+sim <- init + jumps*noise
 
 ```
+
+```{r}
+
+dis <- seq(1:length(jumps))
+p = ggplot() + geom_line(aes(x = dis, y = sim))
+p
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
