@@ -1,0 +1,100 @@
+
+```{r}
+
+library("ggplot2")
+library("dplyr")
+library("readxl")
+#library("pracma")
+#library("somebm")
+
+oil_data <- read_xls("oil_complete.xls") #2589 rows
+
+```
+
+
+To improve our model, we looked into implementing Poisson jump shifts. The algorithm for simulating Poisson jumps is simple. First, to determine how many jumps there will be, $N_T$ is found:
+
+$$N_T \sim Po(T\lambda)$$
+
+Then, simulate $N_T$ uniforms to determine the time between jumps: If there are $N_T$ jumps in $T$ days, there will be $T/N_T = Z$ samples taken: 
+
+$$X_{1...Z} \sim U(0,a)$$
+
+Where $a$ is some arbitrary value. However, the total of the lengths between the jumps must be equal to $T$. Therefore, we normalize the data to sum to $T$. 
+
+$$X_i = \frac{X_i*T}{\sum_{i=1}^Z X_i}$$
+
+To actually compute this, whole integers are needed. Because rounding may make $\sum_{i=0}^{N_t} Y_i \neq T$, a buffer is added to the last value equal to $B = T-\sum_{i=0}^{N_t} Y_i$ to ensure the equivalence holds. We then sampled all the values to randomize the order, so the buffer wasn't always at the end. Finally we simulate the noise: 
+
+$$Y_{1...T} \sim N(\mu,\sigma^2)$$
+
+
+```{r}
+
+po_return <- function(T, la, mu, init, j_mu, j_var, i_mu, i_var) {
+  
+  jump_count <- rpois(1, T * la) # in T units, how many jumps will there be
+  
+  x <- runif(jump_count, 0, 1)
+  case_when(x < 0.5 ~ -1, x > 0.5 ~ 1)
+  
+  jump_vals <- x*rnorm(jump_count, j_mu, j_var) # what will the value of the jumps be
+  
+  # determine time of poisson jumps
+  
+  units <- runif(jump_count, 1, 100)
+  units <- round (T * units / sum(units), 0)
+  if (sum(units) != T) units[length(units)] <- (units[length(units)] + T - sum(units))
+  jump_times <- sample(units)
+  
+  final_data <- c()
+  pjumps <- c()
+  
+  for (i in 1:length(jump_times)) {
+    final_data <- c(final_data, rep(jump_vals[i], jump_times[i]))
+    pjumps <- c(pjumps, rep(jump_vals[i], jump_times[i]))
+    
+  }
+  
+  for (j in 1:length(final_data)) {
+    final_data[i] <- mu * i * final_data[i]
+    
+  }
+  
+  dis = cumsum(rnorm(length(final_data), i_mu, i_var))
+  x1 = seq(1:length(dis))
+  
+  final_data <- final_data + dis + init
+  
+  return (final_data)
+  
+}
+
+```
+
+```{r}
+
+names(oil_data)[2] <- "fut_price"
+names(oil_data)[3] <- "spot_price"
+names(oil_data)[4] <- "fut_vol"
+names(oil_data)[5] <- "spot_vol"
+
+la_real <- 0.03592
+T <- nrow(oil_data)
+init <- 85.5
+
+fut_jumps <- filter(oil_data, abs(fut_vol) > 0.05)
+iday <- filter(oil_data, abs(fut_vol) < 0.05)
+
+fj_vol <- abs(fut_jumps$fut_vol)
+j_mu <- mean(fj_vol)
+j_var <- var(fj_vol)
+
+i_mu <- mean(iday$fut_price[2:nrow(iday)]-iday$fut_price[1:(nrow(iday)-1)])
+i_var <- var(iday$fut_price[2:nrow(iday)]-iday$fut_price[1:(nrow(iday)-1)])
+
+sims <- po_return(T, la_real, 0, init, j_mu, j_var, i_mu, i_var)
+
+plot(sims, type = "l")
+
+```
