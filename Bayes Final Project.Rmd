@@ -125,9 +125,9 @@ In the naive model, we assume a normal prior distribution.
 x <- matrix(nrow =  N, ncol = T)
 weights <- matrix(nrow =  N, ncol = T)
 
-x[, 1] <- rnorm(N, 0, sx) #Assume a normal prior 
+x[, 1] <- rt(N, 300) #Assume a normal prior 
 
-weights[, 1] <- dnorm(obs[1], x[, 1], sy) # initial weight set
+weights[, 1] <- dt((obs[1] - x[, 1])/sx, 300) # initial weight set
 weights[, 1] <- weights[, 1] / sum(weights[, 1]) # initial weight normalized
 
 x[, 1] <-
@@ -138,9 +138,9 @@ x[, 1] <-
 
 for (t in seq(2, T)) {
   
-  x[, t] <- rnorm(N, x[, t - 1], sx) #sample x from previous x
+  x[, t] <- rt(N - x[, t - 1], 300) #sample x from previous x
 
-  weights[, t] <- dnorm(obs[t], x[, t], sy) #get weights from obsveration
+  weights[, t] <- dt((obs[t] - x[, t])/sx, 300) #get weights from obsveration
   weights[, t] <- weights[, t] / sum(weights[, t]) #normalize weights
   
   x[, t] <- #resample x using the weights
@@ -201,6 +201,34 @@ hist(x_mean)
 
 ```
 
+#Profit Algo
+
+```{r}
+init = oil[1,2]
+investment = init*1000
+current = init
+profit = 0
+sellpt = 0
+hold = TRUE
+for (i in 1:nrow(oil)){
+  if (current < fut_pred[i+1] && hold){
+    profit = profit + (oil[i+1,2] - current)
+    sellpt = oil[i+1, 2]
+    hold = FALSE
+  }
+  #after repeated trials, 8% drop seems to be the best point to rebuy
+  if (!hold && oil[i, 2] <= 0.92*sellpt){ 
+    current = oil[i, 2]
+    hold = TRUE
+  }
+}
+tot = profit*1000 #minimum order of 1000 barrels to trade futures
+roi = tot/investment
+roi
+tot
+```
+
+Using a particle filter would yield $7590 over the past couple years of oil futures trading. With an initial investment of $85,510 on the first day of trading, our model yields an 8.88% return on investment.
 
 # Bibliography
 
