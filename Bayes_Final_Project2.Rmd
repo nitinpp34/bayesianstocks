@@ -1,8 +1,8 @@
 ---
 title: "Final Project"
-output:
-  html_document: default
+output: 
   pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -15,12 +15,15 @@ cb_palette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442",
 ggplot2::theme_set(theme_bw())
 library(readxl)
 
+library("fractaldim")
+library("somebm")
+library("stats")
 
 ```
 
 # Objective 
 
-Our objective is to build an algorithm that can predict the movement of 1 month WTI Oil future contracts by using the spot price as a predictor. We will be using particle filters, a form of Sequential Monte Carlo, to build our models and predictions. 
+Our objective is to build an algorithm that can predict the movement of 1 month WTI Oil future contracts by using the spot price as a predictor. We will be using particle filters, a form of Sequential Monte Carlo, as well as a stochastic Poisson jump model that implements Bayesian components, to predict the price of oil. To test the effectiveness of our model, we have implemented an algorithm that simulates trading based on our predictions. Our goal is to develop a strategy that maximizes our profits over an approximately ten year time horizon. In doing so, we will incorporate aspects of: Sequential Monte Carlo, Particle Filters, Kalman Filters, Poisson jump processes, and Brownian motion. 
 
 # Terminology 
 
@@ -69,7 +72,7 @@ Because we are operating under a MC framework, we can create an approximation fo
 $$E[f(\textbf{x}_t)] \approx \frac{\sum^{i =N}_{i=1} f(x_{0:t}^{(i)})w(x^{(i)}_{0:t})}{\sum^{j =N}_{j=1} w(x^{(j)}_{0:t})}=\sum^{i =N}_{i=1} f(x_{0:t}^{(i)})w^{*(i)}_t$$
 wIs there a reason the indices differ between the sums? 
 $$p(x_{0:t}|y_{1:t}) \propto p(y_{t}|x_{0:t}, y_{1:t-1})p(x_{0:t}| y_{1:t-1})$$
-$$\linebreak$$
+
 $$= p(y_{t}|x_{t})p(x_t|x_{0:t-1}, y_{1:t-1})p(x_{0:t-1}|y_{1:t-1})$$
 $$= p(y_{t}|x_{t})p(x_t|x_{t-1})p(x_{0:t-1}|y_{1:t-1})$$
 Recalling $w(x_{0:t}) = \frac{p(x_{0:t}|y_{1:t})}{\pi(x_{0:t}|y_{1:t})}$, we can plug in our value for $p(x_{0:t}|y_{1:t})$: 
@@ -195,6 +198,223 @@ p2
 
 Our naive model, as seen in the graph above, is mediocre at predicting oil futures prices, and the predictions seem to be getting worse as time passes. This makes sense, considering that there’s a big oil sell-off in the back end of our data. We think there are a couple reasons why this model might not be very successful: (1) our prior is normally drawn into the matrix X, and when looking at the distribution of the data, it does not seem to be normally distributed; and (2) the weights assigned to predict the future price is based off of volatility, which can boost the direction of prediction when looking at larger shifts in the market. To fix these, we will first draw our prior from a log-normal distribution and assign weightages in a different way. 
 
+# Poisson Jump Model
+
+```{r}
+
+oil_data <- read_xls("oil_complete.xls") #2589 rows
+
+names(oil_data)[2] <- "fut_price"
+names(oil_data)[3] <- "spot_price"
+names(oil_data)[4] <- "fut_vol"
+names(oil_data)[5] <- "spot_vol"
+
+```
+
+```{r}
+
+genNoise <- function(data, size) {
+  
+  i <- 1
+  hurst <- NULL
+  
+  while (i < length(data) - size - 1) {
+    j <- i + size
+    hurst <- c(hurst, (2 - fd.estim.hallwood(data[i:j])$fd))
+    i <- i + 1
+    
+  }
+  
+  noise <- NULL
+  
+  for (i in 1:length(hurst)) {
+    if (hurst[i] < 0)
+      noise <-
+        c(noise, fbm(0, 1)[1])
+    else
+      noise <- c(noise, fbm(hurst[i], 1)[1])
+    
+  }
+  
+  return (noise)
+  
+}
+
+```
+
+```{r}
+
+genJumps <- function(T, la, j_var) {
+  
+  jump_count <- rpois(1, T * la) # in T units, how many jumps will there be
+  
+  x <- runif(jump_count, 0, 1)
+  case_when(x < 0.5 ~ -1, x > 0.5 ~ 1)
+  
+  jump_vals <- x*rnorm(jump_count, 0, j_var) # what will the value of the jumps be
+  
+  # determine time of poisson jumps
+  
+  units <- runif(jump_count, 1, 100)
+  units <- round (T * units / sum(units), 0)
+  if (sum(units) != T) units[length(units)] <- (units[length(units)] + T - sum(units))
+  jump_times <- sample(units)
+  
+  final_data <- c()
+  pjumps <- c()
+  
+  for (i in 1:length(jump_times)) {
+    
+    final_data <- c(final_data, rep(jump_vals[i], jump_times[i]))
+    pjumps <- c(pjumps, rep(jump_vals[i], jump_times[i]))
+    
+  }
+  
+  final_data <- final_data 
+  
+  return (final_data)
+  
+}
+
+```
+
+To improve our model, we looked into implementing Poisson jump shifts. The algorithm for simulating Poisson jumps is simple. First, to determine how many jumps there will be, $N_T$ is found:
+
+$$N_T \sim Po(T\lambda)$$
+
+Then, simulate $N_T$ uniforms to determine the time between jumps: 
+
+$$p_{1...N_T} \sim U(0,a)$$
+
+Where $a$ is some arbitrary value. However, the total of the lengths between the jumps must be equal to $T$. Therefore, we normalize the data to sum to $T$. 
+
+$$U_i = \frac{Tp_i}{\sum_{i=1}^{N_T} p_i}$$
+
+This ensures the following sum holds:
+
+$$\sum_{i=1}^{N_T}U_i = T$$
+
+Addionallity, the total time elapsed before the next jump is:
+
+$$F(U_i)=\sum_{j=1}^{i}U_j$$
+
+To actually compute this, whole integers are needed. Because rounding may make $\sum_{i=0}^{N_t} P_i \neq T$, a buffer is added to the last value equal to $B = T-\sum_{i=0}^{N_t} Y_i$ to ensure the equivalence holds. We then sampled all the values to randomize the order, so the buffer wasn't always at the end. Finally we simulate the size of the jumps: 
+
+$$Y_{1...T} \sim N(\mu,\sigma^2)$$
+
+This is what a example of a sample may look like for $T = 1000, \, \lambda = 0.05$ 
+
+
+```{r}
+
+example <- genJumps(1000, 0.05, 1)
+ggplot() + geom_line(aes(x = seq(1:1000), y = example)) + ggtitle("Simulated Poisson Jump Process with T = 1000, lambda = 0.05") + labs(y="Jump Size", x = "Index")
+
+```
+
+Because the price of oil is subject to random political events that may quickly change the price, adding a poisson jump process to our simulation will help us to form confidence intervals of how we expect the price to perform over a period of time. After we implement the jumps, we must account for the intraday noise, or Brownian motion. For simple Brownian Motion, $B_i \sim N(0,1)$, with
+
+$$S_n = \sum_{i=1}^nB_i$$
+
+$$E(S_n)=\sqrt{n}$$
+
+Therefore, the interpretation is that over $n$ samples, the expected distance from the origin is $\sqrt{n}$. However, for oil, we believed this was an oversimplification of the price behavior. Oil is very connected to macroeconomic forces, creating cyclicality in supply and demand. A company like Apple may be expected to grow on average for 40 years, but this assumption does not hold for oil, thus we believe the Brownian Motion used to simulate our volatility should reflect that. In our research, we came across Hurst Exponents. For some sum $S_n$ of arbitrary random variables $Y_i$
+
+$$S_n = \sum_{i = 1}^{n}B_i$$
+
+$$E(S_n) = n^{H}$$
+
+The Hurst Exponent describes the degree of dispersion a time series exercises, with the domain of $H: [0,1]$. $H = 0.5$ would be standard Brownian Motion. $H = 1$ would dsuggest the series will move far from the origin, meaning the series is trend following. $H = 0$ would suggest the series is mean reverting or returns to the starting point over time. 
+
+```{r}
+
+set.seed(10)
+
+df <- NULL
+
+n <- 2000
+
+h1 <- fbm(0.1, n)
+h2 <- fbm(0.25, n)
+h3 <- fbm(0.5, n)
+h4 <- fbm(0.75, n)
+h5 <- fbm(0.99, n)
+
+
+ts.plot(main = "Fractional Brownian Motion w/various H Values",ts(h1, start = c(0,1)),
+        ts(h2, start = c(0,1)), 
+        ts(h3, start = c(0,1)),
+        ts(h4, start = c(0,1)),
+        ts(h5, start = c(0,1)),
+    col = c('#845EC2', '#D65DB1', '#FF6F91', '#FF9671', '#FFC75F'), 
+    xlab = "Index", 
+    ylab = "Y", 
+    lwd = 1.5)
+
+legend("topleft", bty="n", lty=c(1,1), col=c('#845EC2', '#D65DB1', '#FF6F91', '#FF9671', '#FFC75F'),
+       legend=c("H = 0.1", "H = 0.25", "H = 0.5", "H = 0.75 ", "H = 0.99"))
+
+```
+
+The Hurst exponent is found empirically by looking at how self-similar the data is. First, we found the Hurst Exponent of the last 100 trading days, using the library fractaldim. Then, we generated a sample of random data with a Hurst exponent equal to the one found empirically. To do this, we used the somebm library. In conclusion, our simulated price at time $T$ is equal to the sum of all previous noise plus all previous poisson jumps plus the initial starting value: 
+
+$$X_T = X_1 + \sum_{t=1}^{T}B_H(t) + \sum_{t=1}^{T}\bigg[\sum_{i=0}^{N_T}Y_i\,\textbf {1}_{F(U_i) \leq t}\bigg]$$
+
+However, the definition of fractional Browian motion is:
+
+$$B_H(t)=\int_{0}^{t}\frac{1}{\Gamma(H+\frac{1}{2})}(t-s)^{H-\frac{1}{2}}dB(s)$$
+
+$B_H(t)$ sums up a given process with given $H$ up to time $t$. Because we $H$ changes at each $t$ value, we correct the sum to:  
+
+$$X_T = X_1 + \sum_{t=1}^{T}B_H(\Delta t) + \sum_{t=1}^{T}\bigg[\sum_{i=0}^{N_T}Y_i\,\textbf {1}_{F(U_i) \leq t}\bigg]$$
+
+We then ran 50 simulations and averaged the results to create our predictions.
+
+
+```{r}
+
+la_real <- 0.03592
+T <- nrow(oil_data)
+init <- 85.5
+
+fut_jumps <- filter(oil_data, abs(fut_vol) > 0.05)
+fj_vol <- abs(fut_jumps$fut_vol)
+j_mu <- mean(fj_vol)
+j_var <- var(fj_vol)
+
+run <- function() {
+  
+  jumps <- exp(genJumps(T, la_real, 0.05))
+  noise <- cumsum(genNoise(oil_data$fut_price, 252))
+  
+  b <- length(jumps) - length(noise) + 1
+  jumps <- jumps[b:length(jumps)]
+  
+  sim <- init + jumps * noise
+  
+  sims <- cbind(sims, sim)
+  
+}
+
+```
+
+```{r message = FALSE}
+
+sims <- read_xls("sims.xls")[-1]
+sims_av <- NULL
+
+for (i in 1:nrow(sims)) {
+  
+  sims_av <- c(sims_av, sum(sims[i,][2:ncol(sims)])/ncol(sims))
+  
+}
+
+ts.plot(sims)
+
+ts.plot(sims_av)
+
+```
+
 # Trading Algorithm
 
 To test our particle filter algorithm, we built a simple trading agorithm to see how much money we would make in the markets. We start with some initial amount of cash. Each day, we make our prediction for the next day. If our predicted value if greater than the current price of the future contact, we buy a contract at today's price. The next day, we sell if the price matches our prediction. If there is an 8% drop, we decide to buy more.  
@@ -243,7 +463,8 @@ range
 # This code above took forever to run each time, but it yielded 0.035 as the desired volatility to stop trading
 
 
-#Shorting Algorithm
+# Shorting Algorithm
+
 ```{r}
 profit <- NULL
 hold = FALSE
@@ -299,7 +520,24 @@ profit
 
 Using a buying strategy would yield $9850 over the past 10 years of oil futures trading. With an initial investment of $85,510 on the first day of trading, our model yields an 11.52% overall return on investment and an annual return of 1.09%, which is pretty bad.
 
-In conclusion, taking a short position in oil futures trading, with the help of a particle filter (and in times of relative political stability) can be pretty profitable.
+# Discussion of Stochastic Poisson Jumps Method
+
+Unlike the particle filter method, the Poisson Jump method predicted the price of oil as opposed to the volatility of oil. This model used an empirical Bayes to estimate how often jumps occured in the price of oil, and to calculate the Hurst exponent and simulate the fractional Brownian motion. However, the model is not a pure Bayesian model because we are not updating a posterior and finding an analogous distribution. Because of this, we had hypothesized that this model would perform worse than the particle filter in calculating the volatility or price on a day by day basis. 
+
+In order to test our model, we simulated 50 10 year periods. In our generated data, we found the model’s price estimates to the actual prices to be ineffective, with a coefficient of correlation of -61%. Furthermore, the correlation of the volatility was 2.3%. Because of this, we decided not to build a trading algorithm that would trade off of these predictions and instead focus on the particle filter model. We hypothesize that this model may work better for other types of financial assets. Oil is very volatile, and a lot of the volatility is determined by short term trends of imbalances in global supply and demand. Because our Brownian motion looked at the previous 252 days to simulate its noise, the data in the immediate past was not very influential in forming our predictions. Because of this, we think assets that may exhibit longer term trends, or be exposed to less political volatility, may be more accurately predicted using this model.   
+
+Additionally, we see two other problems with this model. First, because the previous data points have little weight in the next day's prediction, very strong momentum develops in our predictions, and we ended up having some simulations with extremely negative prices or extremely high prices. Another drawback to this model was how computationally expensive it was. Simulating 50 iterations took close to 25 minutes to run, and it made it difficult to run with larger sample sizes or optimize parameters in the model. 
+
+Ideally, if we had more time, we would like to integrate Poisson jumps into the particle filter model. We believe this would better help to predict big jumps in the price of oil. We found it difficult to integrate this into our filter because the jumps dealt with price and the filter predicted volatility, and think greater exploration would lead to a more robust model.
+
+# Trading Algorithm and Comparison of Profits for Both Methods
+
+In order to compare the profits gained following both methods, we designed two different trading algorithms that either followed a buying (long position) or selling (short position) strategy. These were primarily built out using for-loops that iterated through and used the predicted volatility the next day to make a decision in the current day, whether that was buying or shorting a future. In terms of buying, we encountered a couple optimization quirks, such as only trading when volatility was below 3.5% to avoid those sudden jumps that could lead to losses. We also discovered that after selling, the optimal time to re-buy the future was an 8% drop from the previous sell point. These are interesting financial quirks that we could do some future analysis on. This algorithm yielded a 1.09% annual return, which is pretty low, but showed that our algorithm was effective at predicting volatility. Knowing this fact, we pivoted to another trading algorithm that exclusively shorted the futures. In this algorithm, once sold, the future was not rebought until the predicted volatility the next day was positive. Our algorithm was incredibly successful at predicting these volatility switches, so we were able to turn a profit 90.4% of the time the algorithm decided to short. Overall, we found a 23.33% annual return over the period of 10 years, which is a pretty decent number. Although our SMC model was not the most successful at predicting jumps or the magnitude of movement, it was still very effective at predicting volatility switches and on a very simple level, understanding if the market was going to move up or down the next day.
+
+
+# What We Learned 
+
+We enjoyed challenging ourselves by learning material similar, but not taught to in class. While the Poisson jump model was ultimately ineffective, by learning two different modeling techniques, we were able to see the pros and cons of each model, and better understand what would make a more effective model to predict oil prices. Furthermore, the Poisson model is a great example of what is more complicated is not necessarily better. We took some creative risk in trying to integrate the Hurst exponent into our Brownian motion, and while frustrating that the model performed so poorly, we were able to conclude with some degree of confidence that the particle filter method works better than the Poisson jump model, and use those results to build a trading strategy with strong performance. 
 
 # Bibliography
 
