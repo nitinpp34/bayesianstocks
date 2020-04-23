@@ -230,7 +230,7 @@ return(roi)
 
 We want to sample through potential ranges to stop trading. This ensures that the model primarily focuses on trading when volatility is small and makes safer trades. 
 
-```{r}
+
 top = 0
 range = 0
 for (i in seq(from = 0.02, to = 0.20, by = 0.005)){
@@ -240,7 +240,8 @@ for (i in seq(from = 0.02, to = 0.20, by = 0.005)){
     }
   }
 range
-```
+# This code above took forever to run each time, but it yielded 0.035 as the desired volatility to stop trading
+
 
 #Shorting Algorithm
 ```{r}
@@ -265,9 +266,11 @@ for (i in 1:635){
   }
 }
 count
+
+((tot*1000 + 85510)/85510)^(1/10)-1
 ```
 
-We see that by just shorting, we can make a lot more money. This algorithm relies on microtransactions: each time the predicted future volatility is negative, we short and hold that position until we predict the volatility to go up again. 
+We see that by just shorting, we can make a lot more money. This algorithm relies on microtransactions: each time the predicted future volatility is negative, we short and hold that position until we predict the volatility to go up again. Overall, we would make $610,700 over a period of 10 years using shorts and a particle filter. This yields a 23.33% return annually, which is somewhat competitive among financial institutions.
 
 ```{r}
 init = oil[1,2]
@@ -290,9 +293,13 @@ for (i in 1:nrow(oil)){
 tot = profit*1000 #minimum order of 1000 barrels to trade futures
 tot
 profit
+
+((tot + 85510)/85510)^(1/10)-1
 ```
 
-Using a particle filter would yield $9850 over the past 5 years of oil futures trading. With an initial investment of $85,510 on the first day of trading, our model yields an 11.52% return on investment.
+Using a buying strategy would yield $9850 over the past 10 years of oil futures trading. With an initial investment of $85,510 on the first day of trading, our model yields an 11.52% overall return on investment and an annual return of 1.09%, which is pretty bad.
+
+In conclusion, taking a short position in oil futures trading, with the help of a particle filter (and in times of relative political stability) can be pretty profitable.
 
 # Bibliography
 
