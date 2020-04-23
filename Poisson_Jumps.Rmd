@@ -1,8 +1,3 @@
----
-output:
-  html_document: default
-  pdf_document: default
----
 ```{r}
 
 library("ggplot2")
@@ -18,6 +13,7 @@ library("stats")
 ```{r}
 
 oil_data <- read_xls("oil_complete.xls") #2589 rows
+
 names(oil_data)[2] <- "fut_price"
 names(oil_data)[3] <- "spot_price"
 names(oil_data)[4] <- "fut_vol"
@@ -34,7 +30,7 @@ genNoise <- function(data, size) {
   
   while (i < length(data) - size - 1) {
     j <- i + size
-    hurst <- c(hurst, 2 - fd.estim.hallwood(data[i:j])$fd)
+    hurst <- c(hurst, (2 - fd.estim.hallwood(data[i:j])$fd))
     i <- i + 1
     
   }
@@ -58,14 +54,14 @@ genNoise <- function(data, size) {
 
 ```{r}
 
-genJumps <- function(T, la, j_mu, j_var) {
+genJumps <- function(T, la, j_var) {
   
   jump_count <- rpois(1, T * la) # in T units, how many jumps will there be
   
   x <- runif(jump_count, 0, 1)
   case_when(x < 0.5 ~ -1, x > 0.5 ~ 1)
   
-  jump_vals <- x*rnorm(jump_count, j_mu, j_var) # what will the value of the jumps be
+  jump_vals <- x*rnorm(jump_count, 0, j_var) # what will the value of the jumps be
   
   # determine time of poisson jumps
   
@@ -121,20 +117,20 @@ This is what a example of a sample may look like for $T = 1000, \, \lambda = 0.0
 
 ```{r}
 
-example <- genJumps(1000, 0.05, 0, 1)
+example <- genJumps(1000, 0.05, 1)
 ggplot() + geom_line(aes(x = seq(1:1000), y = example)) + ggtitle("Simulated Poisson Jump Process with T = 1000, λ = 0.05") + labs(y="Jump Size", x = "Index")
 
 ```
 
-Because the price of oil is subject to random political events that may quickly change the price, adding a poisson jump process to our simulation will help us to form confidence intervals of how we expect the price to perform over a period of time. After we implement the jumps, we must account for the intraday noise, or Brownian motion. For simple Brownian Motion, $X_i \sim N(0,1)$, with
+Because the price of oil is subject to random political events that may quickly change the price, adding a poisson jump process to our simulation will help us to form confidence intervals of how we expect the price to perform over a period of time. After we implement the jumps, we must account for the intraday noise, or Brownian motion. For simple Brownian Motion, $B_i \sim N(0,1)$, with
 
-$$S_n = \sum_{i=1}^nX_i$$
+$$S_n = \sum_{i=1}^nB_i$$
 
 $$E(S_n)=\sqrt{n}$$
 
 Therefore, the interpretation is that over $n$ samples, the expected distance from the origin is $\sqrt{n}$. However, for oil, we believed this was an oversimplification of the price behavior. Oil is very connected to macroeconomic forces, creating cyclicality in supply and demand. A company like Apple may be expected to grow on average for 40 years, but this assumption does not hold for oil, thus we believe the Brownian Motion used to simulate our volatility should reflect that. In our research, we came across Hurst Exponents. For some sum $S_n$ of arbitrary random variables $Y_i$
 
-$$S_n = \sum_{i = 1}^{n}X_i$$
+$$S_n = \sum_{i = 1}^{n}B_i$$
 
 $$E(S_n) = n^{H}$$
 
@@ -154,6 +150,7 @@ h3 <- fbm(0.5, n)
 h4 <- fbm(0.75, n)
 h5 <- fbm(0.99, n)
 
+
 ts.plot(main = "Fractional Brownian Motion w/various H Values",ts(h1, start = c(0,1)),
         ts(h2, start = c(0,1)), 
         ts(h3, start = c(0,1)),
@@ -171,7 +168,17 @@ legend("topleft", bty="n", lty=c(1,1), col=c('#845EC2', '#D65DB1', '#FF6F91', '#
 
 The Hurst exponent is found empirically by looking at how self-similar the data is. First, we found the Hurst Exponent of the last 100 trading days, using the library fractaldim. Then, we generated a sample of random data with a Hurst exponent equal to the one found empirically. To do this, we used the somebm library. In conclusion, our simulated price at time $T$ is equal to the sum of all previous noise plus all previous poisson jumps plus the initial starting value: 
 
-$$X_T = X_1 + \sum_{t=1}^{T-1}B_t + \sum_{t=1}^{T-1}\bigg[\sum_{i=0}^{N_T}Y_i\,\textbf {1}_{F(U_i) \leq t}\bigg]$$
+$$X_T = X_1 + \sum_{t=1}^{T}B_H(t) + \sum_{t=1}^{T}\bigg[\sum_{i=0}^{N_T}Y_i\,\textbf {1}_{F(U_i) \leq t}\bigg]$$
+
+However, the definition of fractional Browian motion is:
+
+$$B_H(t)=\int_{0}^{t}\frac{1}{\Gamma(H+\frac{1}{2})}(t-s)^{H-\frac{1}{2}}dB(s)$$
+
+$B_H(t)$ sums up a given process with given $H$ up to time $t$. Because we $H$ changes at each $t$ value, we correct the sum to:  
+
+$$X_T = X_1 + \sum_{t=1}^{T}B_H(\Delta t) + \sum_{t=1}^{T}\bigg[\sum_{i=0}^{N_T}Y_i\,\textbf {1}_{F(U_i) \leq t}\bigg]$$
+
+We then ran 50 simulations and averaged the results to create our predictions.
 
 
 ```{r}
@@ -185,24 +192,38 @@ fj_vol <- abs(fut_jumps$fut_vol)
 j_mu <- mean(fj_vol)
 j_var <- var(fj_vol)
 
-jumps <- exp(genJumps(T, la_real, j_mu, j_var))
-noise <- cumsum(genNoise(oil_data$fut_price, 100))
-
-b <- length(jumps)-length(noise)+1
-jumps <- jumps[b:length(jumps)]
-
-sim <- init + jumps*noise
-
-```
-
-```{r}
-
-dis <- seq(1:length(jumps))
-p = ggplot() + geom_line(aes(x = dis, y = sim))
-p
+run <- function() {
+  
+  jumps <- exp(genJumps(T, la_real, 0.05))
+  noise <- cumsum(genNoise(oil_data$fut_price, 252))
+  
+  b <- length(jumps) - length(noise) + 1
+  jumps <- jumps[b:length(jumps)]
+  
+  sim <- init + jumps * noise
+  
+  sims <- cbind(sims, sim)
+  
+}
 
 ```
 
+```{r message = FALSE}
+
+sims <- read_xls("sims.xls")[-1]
+sims_av <- NULL
+
+for (i in 1:nrow(sims)) {
+  
+  sims_av <- c(sims_av, sum(sims[i,][2:ncol(sims)])/ncol(sims))
+  
+}
+
+ts.plot(sims)
+
+ts.plot(sims_av)
+
+```
 
 
 
